@@ -1,0 +1,37 @@
+# Виртуальное окружение
+venv/
+.venv/
+
+# Резервные копии
+backup_*/
+backup_*
+
+# Временные файлы
+temp_update/
+*.pyc
+__pycache__/
+
+# Конфиги пользователей (не загружать на GitHub!)
+config/
+Phrases/
+
+# Файлы обновления
+last_update_check.txt
+exclude_list.txt
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Логи и кэш
+*.log
+*.cache
+
+# IDE файлы
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows файлы
+Desktop.ini
