@@ -46,6 +46,32 @@ kb_rus = ReplyKeyboardMarkup(
 )
 
 
+# ОБРАБОТЧИК СТАРТА С ФОТО
+@app.on_message(filters.command("start"))
+async def cmd_start(client: Client, message: Message):
+        try:
+            # Пробуем отправить с фото, если ошибка - отправляем без фото
+            try:
+                if os.path.exists('config/gamma.png'):
+                    await message.reply_photo(
+                        'config/gamma.png',
+                        caption='G.A.M.M.A v1.0.0 - Управление через кнопки',
+                        reply_markup=kb_rus
+                    )
+                else:
+                    await message.reply(
+                        'G.A.M.M.A v1.0.1 - Управление через кнопки',
+                        reply_markup=kb_rus
+                    )
+            except Exception as photo_error:
+                print(f"Ошибка отправки фото: {photo_error}")
+                await message.reply(
+                    'G.A.M.M.A v1.0.1 - Управление через кнопки',
+                    reply_markup=kb_rus
+                )
+        except Exception as e:
+            await message.reply(f'Ошибка: {e}')
+
 # Обработчик главного меню
 async def handle_main_menu(client: Client, message: Message):
     if message.text == '🌕 Флудер':
@@ -102,7 +128,20 @@ async def handle_main_menu(client: Client, message: Message):
         await message.reply("✅ Все файлы отправлены!")
     
     elif message.text == '🌑 FAQ':
-        await message.reply("📚 Гайд: https://teletype.in/@ksenod/6xaHYfronsG")
+        # Создаем инлайн-клавиатуру с кнопками управления админами
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📖 Гайд", url="https://teletype.in/@ksenod/6xaHYfronsG")],
+            [
+                InlineKeyboardButton("👑 Добавить админа", callback_data="add_admin"),
+                InlineKeyboardButton("🗑️ Удалить админа", callback_data="remove_admin")
+            ]
+        ])
+        
+        await message.reply(
+            "📚 FAQ - Часто задаваемые вопросы\n\n"
+            "Здесь вы найдете полезную информацию и руководства",
+            reply_markup=keyboard
+        )
     elif message.text == '🌘 Автоответчик':
          targets = load_respond_targets()
          targets_count = len(targets)
@@ -865,35 +904,6 @@ async def show_chats_menu(message: Message, page: int = 0):
         f"📋 Управление чатами (Страница {page + 1}/{total_pages})\n\nВыберите чат:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
-# ОБРАБОТЧИК СТАРТА С ФОТО
-@app.on_message(filters.command("start"))
-async def cmd_start(client: Client, message: Message):
-        try:
-            # Пробуем отправить с фото, если ошибка - отправляем без фото
-            try:
-                if os.path.exists('config/gamma.png'):
-                    await message.reply_photo(
-                        'config/gamma.png',
-                        caption='G.A.M.M.A v1.0.0 - Управление через кнопки',
-                        reply_markup=kb_rus
-                    )
-                else:
-                    await message.reply(
-                        'G.A.M.M.A v1.0.0 - Управление через кнопки',
-                        reply_markup=kb_rus
-                    )
-            except Exception as photo_error:
-                print(f"Ошибка отправки фото: {photo_error}")
-                await message.reply(
-                    'G.A.M.M.A v1.0.0 - Управление через кнопки\n\n'
-                    '🌕 Флудер - управление флудером\n'
-                    '🌗 Файлы - просмотр файлов\n'
-                    '🌑 FAQ - справка',
-                    reply_markup=kb_rus
-                )
-        except Exception as e:
-            await message.reply(f'Ошибка: {e}')
 
 
 # Обработчики callback для мульти-спама
@@ -1766,6 +1776,44 @@ async def handle_all_text_messages(client: Client, message: Message):
              save_tokens(tokens)
              await message.reply(f"✅ Добавлено {added_count} новых токенов. Всего: {len(tokens)}")
              del user_data_storage[user_id]
+        
+        elif state == "waiting_admin_id":
+            try:
+                new_admin_id = message.text.strip()
+                
+                # Проверяем что ID состоит только из цифр
+                if not new_admin_id.isdigit():
+                    await message.reply("❌ ID должен содержать только цифры")
+                    return
+                
+                # Загружаем текущий список админов
+                admins_file = 'config/admins.json'
+                if os.path.exists(admins_file):
+                    with open(admins_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                else:
+                    data = {"admins": []}
+                
+                # Проверяем нет ли уже такого админа
+                if new_admin_id in data["admins"]:
+                    await message.reply("❌ Этот пользователь уже является администратором")
+                    del user_data_storage[user_id]
+                    return
+                
+                # Добавляем нового админа
+                data["admins"].append(new_admin_id)
+                
+                # Сохраняем обновленный список
+                with open(admins_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                
+                await message.reply(f"✅ Пользователь {new_admin_id} добавлен в администраторы")
+                del user_data_storage[user_id]
+                
+            except Exception as e:
+                await message.reply(f"❌ Ошибка при добавлении администратора: {e}")
+                if user_id in user_data_storage:
+                    del user_data_storage[user_id]
 
         elif state == "waiting_multi_delay":
             try:
@@ -1820,6 +1868,132 @@ async def handle_all_text_messages(client: Client, message: Message):
             await handle_main_menu(client, message)
     else:
         await handle_main_menu(client, message)
+
+
+@app.on_callback_query(filters.regex(r"^add_admin$"))
+async def add_admin_handler(client: Client, callback_query: CallbackQuery):
+    """Начинает процесс добавления админа"""
+    user_id = callback_query.from_user.id
+    
+    # Проверяем права текущего пользователя
+    is_admin = await chek_admin(user_id)
+    if not is_admin:
+        await callback_query.answer("❌ У вас нет прав администратора")
+        return
+    
+    # Сохраняем состояние для добавления админа
+    user_data_storage[user_id] = {
+        'state': "waiting_admin_id"
+    }
+    
+    await callback_query.message.edit_text(
+        "👑 Добавление администратора\n\n"
+        "Введите ID пользователя, которого хотите сделать администратором:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_add_admin")]
+        ])
+    )
+    await callback_query.answer()
+
+@app.on_callback_query(filters.regex(r"^cancel_add_admin$"))
+async def cancel_add_admin_handler(client: Client, callback_query: CallbackQuery):
+    """Отмена добавления админа"""
+    user_id = callback_query.from_user.id
+    if user_id in user_data_storage:
+        del user_data_storage[user_id]
+    
+    await callback_query.message.edit_text("❌ Добавление администратора отменено")
+    await callback_query.answer()
+
+
+
+@app.on_callback_query(filters.regex(r"^remove_admin$"))
+async def remove_admin_handler(client: Client, callback_query: CallbackQuery):
+    """Начинает процесс удаления админа"""
+    user_id = callback_query.from_user.id
+    
+    # Проверяем права текущего пользователя
+    is_admin = await chek_admin(user_id)
+    if not is_admin:
+        await callback_query.answer("❌ У вас нет прав администратора")
+        return
+    
+    # Загружаем список админов для отображения
+    admins_file = 'config/admins.json'
+    if os.path.exists(admins_file):
+        with open(admins_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        admins_list = data["admins"]
+    else:
+        admins_list = []
+    
+    if not admins_list:
+        await callback_query.answer("❌ Нет администраторов для удаления")
+        return
+    
+    # Создаем клавиатуру с админами для удаления
+    keyboard = []
+    for admin_id in admins_list:
+        keyboard.append([InlineKeyboardButton(f"❌ Удалить {admin_id}", callback_data=f"remove_admin_confirm|{admin_id}")])
+    
+    keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_remove_admin")])
+    
+    await callback_query.message.edit_text(
+        "👑 Удаление администратора\n\n"
+        "Выберите администратора для удаления:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    await callback_query.answer()
+
+@app.on_callback_query(filters.regex(r"^remove_admin_confirm\|"))
+async def remove_admin_confirm_handler(client: Client, callback_query: CallbackQuery):
+    """Подтверждение удаления админа"""
+    admin_id_to_remove = callback_query.data.split('|')[1]
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Да, удалить", callback_data=f"remove_admin_final|{admin_id_to_remove}")],
+        [InlineKeyboardButton("❌ Нет, отмена", callback_data="remove_admin")]
+    ])
+    
+    await callback_query.message.edit_text(
+        f"⚠️ Вы уверены, что хотите удалить администратора {admin_id_to_remove}?",
+        reply_markup=keyboard
+    )
+    await callback_query.answer()
+
+@app.on_callback_query(filters.regex(r"^remove_admin_final\|"))
+async def remove_admin_final_handler(client: Client, callback_query: CallbackQuery):
+    """Финальное удаление админа"""
+    admin_id_to_remove = callback_query.data.split('|')[1]
+    
+    try:
+        # Загружаем текущий список админов
+        admins_file = 'config/admins.json'
+        if os.path.exists(admins_file):
+            with open(admins_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Удаляем админа
+            if admin_id_to_remove in data["admins"]:
+                data["admins"].remove(admin_id_to_remove)
+                
+                # Сохраняем обновленный список
+                with open(admins_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                
+                await callback_query.answer(f"✅ Администратор {admin_id_to_remove} удален")
+            else:
+                await callback_query.answer("❌ Администратор не найден")
+        else:
+            await callback_query.answer("❌ Файл админов не найден")
+    
+    except Exception as e:
+        await callback_query.answer(f"❌ Ошибка при удалении: {e}")
+    
+    # Возвращаемся к списку админов
+    callback_query.data = "remove_admin"
+    await remove_admin_handler(client, callback_query)
+
 
 @app.on_message(filters.private & (filters.photo | filters.document | filters.video | filters.audio))
 async def save_media_to_config(client: Client, message: Message):
